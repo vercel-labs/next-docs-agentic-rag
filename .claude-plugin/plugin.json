@@ -1,0 +1,11 @@
+{
+  "name": "nextjs-docs-rag",
+  "version": "0.1.0",
+  "description": "Injects relevant Next.js documentation into every prompt via RAG, so the coding agent always has accurate, up-to-date framework context.",
+  "author": {
+    "name": "Jude Gao"
+  },
+  "repository": "https://github.com/judegao/agentic-rag",
+  "license": "MIT",
+  "keywords": ["nextjs", "rag", "docs", "context"]
+}
