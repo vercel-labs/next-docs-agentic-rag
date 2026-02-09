@@ -55,8 +55,7 @@ export default function Home() {
             Next.js Docs RAG API
           </h1>
           <p className="mt-2 text-zinc-500 dark:text-zinc-400">
-            Agentic retrieval-augmented generation over local Next.js
-            documentation. Powered by Claude Opus 4.6 via Vercel AI Gateway.
+            Send any prompt, get back relevant Next.js documentation.
           </p>
         </header>
 
@@ -73,30 +72,6 @@ export default function Home() {
 
           <div>
             <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              How it works
-            </h2>
-            <p className="leading-7 text-zinc-600 dark:text-zinc-400">
-              This API is designed to sit between a user prompt and a coding
-              agent. Send any prompt — it doesn&apos;t need to mention Next.js
-              explicitly. The RAG agent infers what documentation the coding
-              agent would need, searches 379 local MDX files using{" "}
-              <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-sm dark:bg-zinc-800">
-                grep
-              </code>
-              ,{" "}
-              <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-sm dark:bg-zinc-800">
-                list_files
-              </code>
-              , and{" "}
-              <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-sm dark:bg-zinc-800">
-                read_file
-              </code>{" "}
-              tools, and returns the relevant documentation.
-            </p>
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
               Request
             </h2>
             <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
@@ -107,7 +82,7 @@ Content-Type: application/json
   "query": "build a todo list with server actions"
 }`}
             </pre>
-            <div className="mt-3 space-y-1">
+            <div className="mt-3">
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
                   query
@@ -115,8 +90,8 @@ Content-Type: application/json
                 <span className="text-zinc-400 dark:text-zinc-500">
                   string, required
                 </span>{" "}
-                — The prompt to retrieve documentation for. Can be any coding
-                task, bug report, or question. Does not need to mention Next.js.
+                — Any coding task, bug report, or question. Does not need to
+                mention Next.js.
               </p>
             </div>
           </div>
@@ -130,7 +105,7 @@ Content-Type: application/json
               <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
                 text/plain
               </code>{" "}
-              — the relevant documentation content with file path citations.
+              — relevant documentation with file path citations.
             </p>
             <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
               {`// 200 OK
@@ -149,8 +124,7 @@ Sources:
 
           <div>
             <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Usage with{" "}
-              <code className="text-lg">fetch</code>
+              Example
             </h2>
             <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
               {`const response = await fetch("https://next-docs-agentic-rag.labs.vercel.dev/api/rag", {
@@ -162,90 +136,6 @@ Sources:
 const docs = await response.text();
 // Pass \`docs\` as context to your coding agent`}
             </pre>
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Tools
-            </h2>
-            <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
-              The agent has access to 3 sandboxed, read-only tools scoped to the{" "}
-              <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
-                .next-docs
-              </code>{" "}
-              directory:
-            </p>
-            <div className="space-y-3">
-              {[
-                {
-                  name: "grep",
-                  desc: "Regex search across all .mdx/.md files. Returns matching lines with file paths and line numbers.",
-                  params: "pattern, path, maxResults?",
-                },
-                {
-                  name: "list_files",
-                  desc: "List files and directories at a given path. Used to browse the doc tree.",
-                  params: "path",
-                },
-                {
-                  name: "read_file",
-                  desc: "Read an MDX file with optional pagination (offset/limit).",
-                  params: "path, offset?, limit?",
-                },
-              ].map((t) => (
-                <div
-                  key={t.name}
-                  className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
-                >
-                  <div className="flex items-baseline gap-2">
-                    <code className="font-semibold text-zinc-900 dark:text-zinc-100">
-                      {t.name}
-                    </code>
-                    <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                      ({t.params})
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                    {t.desc}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Configuration
-            </h2>
-            <div className="space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-              <p>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Model:
-                </span>{" "}
-                <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
-                  anthropic/claude-opus-4-6
-                </code>{" "}
-                via Vercel AI Gateway
-              </p>
-              <p>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Max steps:
-                </span>{" "}
-                15 (tool call rounds before the agent must respond)
-              </p>
-              <p>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Env:
-                </span>{" "}
-                <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
-                  AI_GATEWAY_API_KEY
-                </code>{" "}
-                required in{" "}
-                <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
-                  .env.local
-                </code>
-              </p>
-            </div>
           </div>
         </section>
 
@@ -285,7 +175,7 @@ const docs = await response.text();
               {loading && !answer && (
                 <div className="flex items-center gap-3 text-zinc-500">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600" />
-                  Exploring documentation...
+                  Searching documentation...
                 </div>
               )}
               {answer && (

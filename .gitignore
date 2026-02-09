@@ -40,4 +40,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 # next-agents-md
-.next-docs/
+# .next-docs/
