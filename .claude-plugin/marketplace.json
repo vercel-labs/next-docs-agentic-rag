@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "nextjs-docs-rag",
-      "source": ".",
+      "source": "./",
       "description": "Injects relevant Next.js documentation into every prompt via RAG",
       "version": "0.1.0",
       "keywords": ["nextjs", "rag", "docs", "context"]
