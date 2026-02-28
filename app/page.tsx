@@ -82,88 +82,8 @@ npx skills add vercel-labs/next-docs-agentic-rag
           </div>
         </section>
 
-        {/* API Documentation */}
-        <section className="mb-16 space-y-8">
-          <div>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Endpoint
-            </h2>
-            <code className="block rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-              POST https://next-docs-agentic-rag.labs.vercel.dev/api/rag
-            </code>
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Request
-            </h2>
-            <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-              {`POST https://next-docs-agentic-rag.labs.vercel.dev/api/rag
-Content-Type: application/json
-
-{
-  "query": "build a todo list with server actions"
-}`}
-            </pre>
-            <div className="mt-3">
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
-                  query
-                </code>{" "}
-                <span className="text-zinc-400 dark:text-zinc-500">
-                  string, required
-                </span>{" "}
-                — Any coding task, bug report, or question. Does not need to
-                mention Next.js.
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Response
-            </h2>
-            <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
-              Returns{" "}
-              <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
-                text/plain
-              </code>{" "}
-              — relevant documentation with file path citations.
-            </p>
-            <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-              {`// 200 OK
-// Content-Type: text/plain
-
-Based on the Next.js documentation...
-
-## Server Actions
-...
-
-Sources:
-- 01-app/01-getting-started/08-updating-data.mdx
-- 01-app/02-guides/forms.mdx`}
-            </pre>
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Example
-            </h2>
-            <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-              {`const response = await fetch("https://next-docs-agentic-rag.labs.vercel.dev/api/rag", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ query: "fix the auth flow" }),
-});
-
-const docs = await response.text();
-// Pass \`docs\` as context to your coding agent`}
-            </pre>
-          </div>
-        </section>
-
         {/* Demo */}
-        <section>
+        <section className="pb-24">
           <div className="mb-6 flex items-baseline gap-3">
             <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
               Try it
