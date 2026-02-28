@@ -1,0 +1,247 @@
+---
+title: Instant Client Navigation
+description: Optimize client-side navigation with unstable_instant and runtime prefetching to eliminate loading states.
+---
+
+This guide covers how to optimize the **client-side navigation** experience — what users see when they click a `<Link>` or call `router.push()`, as opposed to the initial full-page load.
+
+## How Client Navigation Differs from Initial Load
+
+During initial page loads, the entire route tree renders from the document root, so a `<Suspense>` or `loading.tsx` at the root layout covers everything. During client-side navigation, React **enters the route tree at the shared layout** between the current page and the destination. Only segments below that shared layout re-render. Any Suspense boundary above the shared layout is invisible — it won't show a fallback, and it won't prevent blocking.
+
+This means:
+
+- A `loading.tsx` in `app/layout.tsx` protects initial loads but does **nothing** for navigations between child routes.
+- A navigation from `/shop/shoes` to `/shop/hats` enters at `app/shop/layout.tsx`. Only segments below that layout re-render. Boundaries above it are irrelevant.
+- The "instant shell" for client nav is the content visible at the moment of navigation, before any dynamic data streams in — composed entirely of cached/prefetched content and Suspense fallbacks local to the re-rendered subtree.
+
+## Understanding `unstable_instant`
+
+`unstable_instant` is a segment config export that makes client-side navigations to that route instant. Without it, the framework does NOT guarantee instant client-side navigations regardless of how Suspense is used.
+
+It does two things:
+
+1. **Enables the framework to produce an instant shell for client-side navigations.**
+2. **Validates the caching structure** — flags any component that accesses uncached data outside a Suspense boundary, so structural issues surface during development.
+
+### Configuration Modes
+
+**Static mode** — validates only; default prefetching behavior (static content only):
+
+```tsx
+export const unstable_instant = { prefetch: 'static' }
+```
+
+**Runtime mode** — validates AND enables runtime prefetching (personalized content can be prefetched):
+
+```tsx
+export const unstable_instant = {
+  prefetch: 'runtime',
+  samples: [
+    {
+      cookies: [{ name: 'session', value: 'abc123' }],
+      headers: [['x-region', 'us-east']],
+      params: { id: '42' },
+      searchParams: { tab: 'overview' },
+    },
+  ],
+}
+```
+
+**Opt-out** — explicitly disable for a segment (useful for segments too dynamic to prefetch on entry):
+
+```tsx
+export const unstable_instant = false
+```
+
+### Requirements
+
+- Requires `experimental.cacheComponents: true` in `next.config.js`.
+- `prefetch: 'runtime'` is NOT allowed on root layouts.
+- Parallel routes are not fully supported yet.
+- `samples` are required by the schema for `prefetch: 'runtime'` (at least one), but are not currently consumed at runtime. They are reserved for future build-time validation. You must still provide them.
+- The `from` field is accepted but not consumed — validation runs for all entry points regardless.
+
+## Understanding Runtime Prefetching
+
+Runtime prefetching is the key capability that distinguishes `prefetch: 'runtime'` from `prefetch: 'static'`. It allows the framework to prefetch personalized content that depends on cookies, headers, and other request-specific data.
+
+### Why This Matters
+
+With `prefetch: 'static'`, components that call `cookies()` or `headers()` — even if they have `"use cache"` — **cannot be prefetched**. There is no runtime prefetch request to populate them, so they must sit behind a Suspense boundary and stream in after navigation. The user sees a loading state for all personalized content.
+
+With `prefetch: 'runtime'`, those same components can render as part of the instant shell. The framework sends a prefetch request **carrying the user's actual cookies and headers** before the user navigates. The response is cached in the browser. On navigation, the cached response is used immediately — no loading state, no round trip.
+
+### How It Works on the Wire
+
+1. The client's segment cache assigns `FetchStrategy.PPRRuntime` to segments with `HasRuntimePrefetch` in their `PrefetchHint` flags.
+2. The client sends a prefetch request with `Next-Router-Prefetch: 2` (vs `1` for static prefetch).
+3. The server recognizes this as a runtime prefetch and runs `generateRuntimePrefetchResult()`.
+4. The server executes a **two-phase render**:
+   - **Phase 1 (Prospective):** Renders with the real cookies/headers to discover and fill all caches.
+   - **Phase 2 (Final):** Renders again with caches pre-filled, using a staged pipeline.
+5. During the final render, `cookies()` and `headers()` resolve with **real values** from the request — unlike static prerenders where they would suspend or postpone.
+6. The response is prepended with a marker byte: `~` (partial — has dynamic holes) or `#` (complete).
+7. Runtime prefetch responses are **never cached server-side** — only in the browser's prefetch cache.
+
+### The Staged Rendering Pipeline
+
+The final render uses a 5-stage pipeline that controls when dynamic APIs resolve:
+
+| Stage         | What happens                                                                 |
+|:--------------|:-----------------------------------------------------------------------------|
+| EarlyStatic   | Render begins. Runtime-prefetchable segments start rendering static parts.   |
+| Static        | Non-prefetchable segments start rendering their static parts.                |
+| EarlyRuntime  | `cookies()`/`headers()` resolve for runtime-prefetchable segments.           |
+| Runtime       | `cookies()`/`headers()` resolve for non-prefetchable segments.               |
+| Dynamic       | Render is aborted. Anything still pending becomes a dynamic hole.            |
+
+Content that resolves during EarlyStatic/Static/EarlyRuntime stages becomes part of the instant shell. Content that requires the Dynamic stage becomes a loading state.
+
+### What Runtime Prefetching Unlocks
+
+Consider a dashboard layout that reads cookies to display the user's name:
+
+```tsx
+// WITHOUT runtime prefetching: user sees loading skeleton on every navigation
+async function DashboardHeader() {
+  const session = (await cookies()).get('session')?.value
+  const user = await fetchUser(session)
+  return <header>{user.name}</header>
+}
+```
+
+With `prefetch: 'static'`, this component MUST be behind Suspense — no way to prefetch it because it needs cookies. Users see a skeleton every time they navigate within the dashboard.
+
+With `prefetch: 'runtime'`, the prefetch request carries the user's cookies. The `fetchUser()` call resolves during the prefetch. The user's name appears **instantly** on navigation — no skeleton, no round trip.
+
+## What Goes in the Instant Shell (Client Navigation)
+
+For client-side navigations, the instant shell is what appears the moment the user clicks a link, before any dynamic data streams in. It includes:
+
+1. **Synchronous components** — components with no async I/O automatically render into the shell
+2. **Suspense fallbacks** — the `fallback` prop of any `<Suspense>` local to the re-rendered subtree becomes part of the shell
+3. **`"use cache"` output (static)** — cached component results that don't depend on request-specific data are available immediately via static prefetch
+4. **`"use cache"` output (runtime)** — cached component results that DO depend on cookies/headers are available immediately ONLY if `prefetch: 'runtime'` is enabled on the segment, because the runtime prefetch carries the user's actual cookies/headers
+
+Item 4 is the key difference from initial load optimization. On initial load, only static caching matters (there's no prefetch cache yet). On client navigation with runtime prefetching enabled, personalized cached content can also be instant.
+
+### The Two Caching Tiers for Instant Navigation
+
+| Tier                    | What it caches                                   | Where it lives       | When it's available                                      |
+|:------------------------|:-------------------------------------------------|:---------------------|:---------------------------------------------------------|
+| Static (CDN)            | Components with no cookies/headers access        | CDN, shared by users | Always — prefetched via static prefetch (`header: '1'`)  |
+| Runtime (browser cache) | Components that read cookies/headers + use cache | Browser, per-client  | Only with `prefetch: 'runtime'` (`header: '2'`)          |
+
+A component that calls `cookies()` inside `"use cache"` is **runtime-cacheable**. With `prefetch: 'static'`, it must be behind Suspense (no way to prefetch it). With `prefetch: 'runtime'`, it renders into the instant shell because the prefetch request carried the cookies.
+
+## Enabling Runtime Prefetch for Personalized Content
+
+When a component reads cookies/headers and the result is cacheable per-user, you can make it part of the instant shell by enabling runtime prefetching. Without runtime prefetching, personalized content always requires Suspense. With it, personalized cached content appears instantly.
+
+**When to use:** The component reads `cookies()` or `headers()`, the data it fetches is cacheable (doesn't need to be fresh on every single request), and you want the content to appear instantly on navigation — not behind a loading skeleton.
+
+**Step-by-step:**
+
+1. Ensure the component's data-fetching function uses `"use cache"` with `cacheLife()`.
+2. Read cookies/headers outside the cache scope, pass as arguments.
+3. Set `unstable_instant` to `prefetch: 'runtime'` on the segment.
+
+```tsx
+// page.tsx
+import { cookies } from 'next/headers'
+import { cacheLife } from 'next/cache'
+
+// Enable runtime prefetching — navigations will carry the user's cookies
+export const unstable_instant = {
+  prefetch: 'runtime',
+  samples: [
+    {
+      cookies: [{ name: 'session', value: 'example' }],
+    },
+  ],
+}
+
+export default async function DashboardPage() {
+  return (
+    <div>
+      <DashboardHeader />          {/* reads cookies, but instant with runtime prefetch */}
+      <Suspense fallback={<FeedSkeleton />}>
+        <LiveFeed />               {/* truly dynamic — must be behind Suspense */}
+      </Suspense>
+    </div>
+  )
+}
+
+// Reads cookies, delegates to cached function
+async function DashboardHeader() {
+  const session = (await cookies()).get('session')?.value
+  return <CachedHeader sessionId={session} />
+}
+
+// Cached per-user — resolved during runtime prefetch
+async function CachedHeader({ sessionId }: { sessionId: string | undefined }) {
+  "use cache"
+  cacheLife('minutes')
+  if (!sessionId) return <header>Welcome, guest</header>
+  const user = await fetchUser(sessionId)
+  return <header>Welcome, {user.name}</header>
+}
+```
+
+**Why this works:** During the runtime prefetch (triggered before the user navigates), the server receives the user's real cookies. `DashboardHeader` calls `cookies()` which resolves immediately during the EarlyRuntime stage of the staged pipeline. The `CachedHeader` function runs with the real `sessionId`, its result is cached, and the prefetch response includes the rendered header. On navigation, the browser uses the cached response — the user's name appears instantly.
+
+**What still needs Suspense:** `LiveFeed` is truly dynamic (fresh on every request, not cached). No amount of prefetching helps — it must stream in behind a Suspense boundary. Runtime prefetching doesn't change this. It only helps components whose data is **cacheable but personalized**.
+
+### Connection to Deferred Awaits
+
+With `prefetch: 'static'`, a deferred `cookies()` still requires Suspense — the leaf component suspends because there are no cookies during static prefetch. But with `prefetch: 'runtime'`, the cookies promise resolves during the EarlyRuntime stage. If the leaf also uses `"use cache"` for its data fetching, it can render into the instant shell entirely. Deferring the `await` is the first step; runtime prefetching is what eliminates the loading state.
+
+## Instant Navigation Strategy: The Progression
+
+When optimizing a route for instant client navigation, follow this progression:
+
+**Phase 1: Add `prefetch: 'static'` and fix structural issues.**
+- Export `unstable_instant = { prefetch: 'static' }` on the target segment.
+- Fix all validation errors using push-down, extract static, `"use cache"`, and other structural patterns.
+- After this phase: all static content is instant, personalized content is behind Suspense.
+
+**Phase 2: Upgrade to `prefetch: 'runtime'` to unblock personalized content.**
+- Change to `unstable_instant = { prefetch: 'runtime', samples: [...] }`.
+- Identify Suspense boundaries that exist only because cookies/headers are needed.
+- For each: if the data is cacheable per-user, apply the runtime prefetch pattern to eliminate the boundary.
+- After this phase: both static AND personalized cached content is instant. Only truly dynamic, uncacheable data remains behind Suspense.
+
+**Phase 3: Iterate on loading states.**
+- Review remaining Suspense boundaries (truly dynamic content).
+- Ensure skeletons are high quality and match the real UI structure.
+- Push Suspense boundaries as low as possible — show the user maximum real content while the remaining dynamic data streams in.
+
+## Composing `unstable_instant` Across the Route Hierarchy
+
+`unstable_instant` composes through the route tree:
+
+- A segment without `unstable_instant`: ignored by validation entirely.
+- A segment with `unstable_instant = false`: intentional boundary — validation won't check entry into this segment, but DOES check navigations between its children.
+- A segment with `unstable_instant = { prefetch: 'static' }`: validated for all entry points. Static content must be cached, dynamic content must be behind Suspense.
+- A segment with `unstable_instant = { prefetch: 'runtime' }`: same validation, plus runtime prefetching is enabled. Personalized cached content can be part of the instant shell.
+
+**Example:** Navigating to `/dashboard` for the first time might block because the dashboard layout is too dynamic to prefetch. But navigating from `/dashboard/a` to `/dashboard/b` should be instant. Express this by:
+
+```tsx
+// app/dashboard/layout.tsx — too dynamic for entry, but fine for sibling navs
+export const unstable_instant = false
+
+// app/dashboard/a/page.tsx — instant when navigating within dashboard
+export const unstable_instant = { prefetch: 'runtime', samples: [{ cookies: [{ name: 'session', value: 'x' }] }] }
+
+// app/dashboard/b/page.tsx — same
+export const unstable_instant = { prefetch: 'runtime', samples: [{ cookies: [{ name: 'session', value: 'x' }] }] }
+```
+
+## Key Constraints
+
+- **Runtime prefetch responses are never cached server-side** — only in the browser's prefetch cache. Each user gets their own prefetch response based on their cookies/headers.
+- **Runtime prefetching has server cost** — the server processes a real request for each prefetchable link visible to the user. This is why it's opt-in and why `unstable_instant` must validate the route structure first.
+- **`prefetch: 'runtime'` is NOT allowed on root layouts** — this will throw an error.
+- **Runtime prefetching only helps cached personalized content** — truly dynamic data (uncached fetches, `connection()`, `Date.now()`) still needs Suspense regardless.

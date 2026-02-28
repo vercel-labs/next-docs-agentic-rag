@@ -1,0 +1,439 @@
+---
+title: PPR Optimization Patterns
+description: Practical patterns and techniques for maximizing the static shell with Partial Prerendering (PPR) and Cache Components.
+---
+
+When using [Cache Components](/docs/app/getting-started/cache-components), the goal is to **maximize the static shell** — more content visible instantly, fewer loading states. This guide covers practical patterns for shrinking or eliminating dynamic boundaries.
+
+## Pattern 1: Push async I/O down to leaf components
+
+**This is the highest-impact optimization.** A common pattern is fetching data at the top of a component tree and prop-drilling it down to children. This makes the entire subtree dynamic. The fix: move the async call down to the leaf components that actually need the data, wrap each leaf in its own `<Suspense>`, and make the parent synchronous.
+
+**When to use `React.cache()`:** Only needed when **multiple leaves** need the same data. `React.cache()` deduplicates within a single render pass — no matter how many leaves call the same cached function, the actual I/O runs once. If only one leaf needs the data, just move the `await` there directly — no `React.cache()` needed.
+
+**When push-down does NOT work:** If the parent uses the fetched data for **conditional rendering** (e.g., `if (isAdmin) return <AdminView />` based on cookies), the parent genuinely needs the data to decide what to render. Push-down only works when the parent is just passing data through for display. For conditional cases, try Patterns 3-5 instead.
+
+```tsx
+import { cache } from 'react'
+
+// BEFORE — parent fetches and prop-drills, entire subtree is dynamic
+async function Dashboard() {
+  const data = await fetchDashboardData()
+  return (
+    <div>
+      <Header />                           {/* Static, but trapped! */}
+      <RevenueChart data={data.revenue} />
+      <OrderList data={data.orders} />
+    </div>
+  )
+}
+
+// AFTER — wrap shared fetches in React.cache(), call from leaves
+const getRevenue = cache(() => fetchRevenue())
+const getOrders = cache(() => fetchOrders())
+
+function Dashboard() {
+  // No longer async! Prerenders into the static shell automatically.
+  return (
+    <div>
+      <Header />
+      <Suspense fallback={<RevenueSkeleton />}>
+        <RevenueChart />
+      </Suspense>
+      <Suspense fallback={<OrdersSkeleton />}>
+        <OrderList />
+      </Suspense>
+    </div>
+  )
+}
+
+async function RevenueChart() {
+  const revenue = await getRevenue()  // deduped if called elsewhere too
+  return <Chart data={revenue} />
+}
+
+async function OrderList() {
+  const orders = await getOrders()
+  return <List items={orders} />
+}
+```
+
+**Why this works:** The parent component loses its `async` and becomes synchronous — it prerenders into the static shell automatically. Each leaf independently awaits its data inside its own `<Suspense>`, so only the leaves are dynamic. `React.cache()` ensures the data is fetched once regardless of how many components call it.
+
+**When the original code fetches a single big object** (like `fetchDashboardData()` returning `{ revenue, orders, users }`), split it into separate cached functions for each piece of data. If the underlying API truly returns one object, wrap that API call in `React.cache()` and have each leaf pull out what it needs:
+
+```tsx
+const getDashboardData = cache(() => fetchDashboardData())
+
+async function RevenueChart() {
+  const { revenue } = await getDashboardData()  // deduped
+  return <Chart data={revenue} />
+}
+
+async function OrderList() {
+  const { orders } = await getDashboardData()  // same cache entry, no extra fetch
+  return <List items={orders} />
+}
+```
+
+Key insight: Suspense boundaries lower in the tree = more content in the static shell. High-up boundaries are "blunt tools" — easy to add dynamic code but less of the tree prerenders.
+
+### Technique 1a: Defer `await params` — pass the promise, await deeper
+
+A very common pattern is `const { myParam } = await params` at the top of a layout. If that param is dynamic (not covered by `generateStaticParams`), the entire layout becomes dynamic because the `await` never resolves during prerender. But often the param is only consumed by a component much deeper — and crucially, beneath an intermediate Suspense boundary.
+
+**The fix:** Don't destructure-and-await at the top. Instead, derive a promise and pass it down. Await it only at the point of consumption.
+
+```tsx
+// BEFORE — layout awaits params, entire subtree is dynamic
+async function ProductLayout({ params, children }: { params: Promise<{ id: string }>; children: ReactNode }) {
+  const { id } = await params               // blocks the entire layout!
+  return (
+    <div>
+      <Sidebar />                            {/* Static, but trapped */}
+      <ProductHeader id={id} />
+      {children}
+    </div>
+  )
+}
+
+// AFTER — layout passes the promise through, awaits only at consumption
+function ProductLayout({ params, children }: { params: Promise<{ id: string }>; children: ReactNode }) {
+  const idPromise = params.then(p => p.id)   // no await — layout stays sync
+  return (
+    <div>
+      <Sidebar />                            {/* Now in the static shell */}
+      <Suspense fallback={<HeaderSkeleton />}>
+        <ProductHeader id={idPromise} />
+      </Suspense>
+      {children}
+    </div>
+  )
+}
+
+async function ProductHeader({ id }: { id: Promise<string> }) {
+  const resolvedId = await id                // await happens here, inside Suspense
+  const product = await fetchProduct(resolvedId)
+  return <h1>{product.name}</h1>
+}
+```
+
+You can also just pass the entire `params` promise and destructure at the leaf. The key is: **don't `await` until you're beneath a Suspense boundary.**
+
+The same pattern applies to `cookies()` and `headers()` — don't `await cookies()` at the top of a component if you only need the value deeper down. Pass the promise and await at the consumption point:
+
+```tsx
+// BEFORE — awaits cookies at top, entire component is dynamic
+async function Nav() {
+  const session = (await cookies()).get('session')?.value
+  return (
+    <nav>
+      <Logo />                               {/* Static, but trapped */}
+      <UserMenu session={session} />
+    </nav>
+  )
+}
+
+// AFTER — defer the await
+function Nav() {
+  const sessionPromise = cookies().then(c => c.get('session')?.value)
+  return (
+    <nav>
+      <Logo />                               {/* Now in the static shell */}
+      <Suspense fallback={<UserMenuSkeleton />}>
+        <UserMenu session={sessionPromise} />
+      </Suspense>
+    </nav>
+  )
+}
+
+async function UserMenu({ session }: { session: Promise<string | undefined> }) {
+  const value = await session
+  // ...
+}
+```
+
+### Technique 1b: Initiate fetch early, await late
+
+You don't have to choose between "fetch at the top" (fast but blocks prerender) and "fetch at the leaf" (prerenderable but potentially slower). You can **initiate** the fetch high up to start the network request as early as possible, then **await** it at the leaf where the data is consumed — beneath a Suspense boundary.
+
+```tsx
+// Start the fetch immediately (no await — just kick off the promise)
+function Dashboard() {
+  const revenuePromise = fetchRevenue()       // starts NOW, no await
+  const ordersPromise = fetchOrders()         // starts NOW, no await
+
+  return (
+    <div>
+      <Header />                              {/* In the static shell */}
+      <Suspense fallback={<RevenueSkeleton />}>
+        <RevenueChart data={revenuePromise} />
+      </Suspense>
+      <Suspense fallback={<OrdersSkeleton />}>
+        <OrderList data={ordersPromise} />
+      </Suspense>
+    </div>
+  )
+}
+
+async function RevenueChart({ data }: { data: Promise<Revenue> }) {
+  const revenue = await data                  // await here, inside Suspense
+  return <Chart data={revenue} />
+}
+```
+
+**Why this is better than just moving the fetch to the leaf:** The fetch starts at the same time as the parent renders, not later when the leaf renders. This eliminates the waterfall — the fetch runs in parallel with rendering the static shell content, and the leaf just awaits the already-in-flight promise.
+
+### Technique 1c: Pass promises through context instead of resolved values
+
+A common pattern is resolving data in a provider and putting the value in context, so any client component can consume it. But if the provider awaits the data, everything beneath the provider suspends:
+
+```tsx
+// BEFORE — provider resolves the promise, everything underneath suspends
+function MyProvider({ dataFromServer, children }: { dataFromServer: Promise<Data>; children: ReactNode }) {
+  const value = React.use(dataFromServer)    // suspends the entire provider subtree!
+  return <MyContext value={value}>{children}</MyContext>
+}
+
+function Consumer() {
+  const value = React.use(MyContext)          // gets resolved Data
+  return <div>{value.name}</div>
+}
+```
+
+**The fix:** Pass the promise *through* the context. Consumers call `React.use()` twice — once for the context, once for the promise. Suspension happens only at the consumer, not at the provider:
+
+```tsx
+// AFTER — provider passes the promise through, consumers suspend individually
+function MyProvider({ dataFromServer, children }: { dataFromServer: Promise<Data>; children: ReactNode }) {
+  return <MyContext value={dataFromServer}>{children}</MyContext>  // no React.use() here
+}
+
+function Consumer() {
+  const value = React.use(React.use(MyContext))  // inner use() gets the promise, outer use() suspends
+  return <div>{value.name}</div>
+}
+```
+
+Now the provider is synchronous and renders into the static shell. Only the specific `Consumer` components that actually read the data will suspend — and only if they're beneath a Suspense boundary. Other components in the tree that don't consume the context are unaffected.
+
+**This is especially impactful for auth/session patterns** where a session provider wraps the entire app and many components never read the session at all.
+
+### Technique 1d: Client components with inherent dynamism
+
+Some UI is inherently dynamic on the client — relative timestamps ("2 minutes ago"), browser-only APIs, or content that varies per render. These components need a locally scoped Suspense boundary regardless of server-side caching.
+
+For relative time rendering, the component must run on the client (the "2 minutes ago" changes every minute). Wrap it in its own Suspense boundary so the rest of the page can prerender:
+
+```tsx
+// The relative time component must be client-rendered
+<div>
+  <h3>{post.title}</h3>                       {/* Static — in the shell */}
+  <Suspense fallback={<time>{post.createdAt.toLocaleDateString()}</time>}>
+    <RelativeTime date={post.createdAt} />    {/* Client-only, streams in */}
+  </Suspense>
+</div>
+```
+
+The fallback can show a static date format as a reasonable placeholder until the client component hydrates with the relative format.
+
+## Pattern 2: Extract static content from dynamic subtrees
+
+Static elements trapped inside a `<Suspense>` boundary are excluded from the shell. Move them outside.
+
+```tsx
+// BEFORE — heading trapped inside dynamic boundary, invisible in shell
+<Suspense fallback={null}>
+  <h2>Revenue</h2>
+  <RevenueChart />
+</Suspense>
+
+// AFTER — heading is in the static shell
+<h2>Revenue</h2>
+<Suspense fallback={<ChartSkeleton />}>
+  <RevenueChart />
+</Suspense>
+```
+
+Also fix `fallback={null}` — provide a real skeleton so users see something.
+
+## Pattern 3: `"use cache"` to prerender dynamic data into the shell
+
+`"use cache"` tells Next.js to execute the async code at build time, cache the result, and include it in the static shell. At build time, Next.js does a first-pass render to "warm the cache", then uses that cached output during PPR instead of falling back to Suspense.
+
+**This means the cached content appears instantly — no loading state, no streaming wait.** It's included directly in the shell HTML.
+
+```tsx
+import { cacheLife } from 'next/cache'
+
+async function PostList() {
+  "use cache"
+  cacheLife('hours')  // revalidate in background after 1 hour
+
+  const res = await fetch('http://api.cms.com/posts')
+  const { posts } = await res.json()
+
+  return (
+    <ul>
+      {posts.map(post => <li key={post.id}>{post.title}</li>)}
+    </ul>
+  )
+}
+```
+
+**When to use:** The data doesn't need to be fresh on every single request. Product catalogs, blog posts, analytics for past dates, category lists — anything that changes infrequently.
+
+**Always pair with `cacheLife()`** to control how long the cached value is used:
+- `cacheLife('hours')` — revalidate in background after ~1 hour
+- `cacheLife('days')` — revalidate after ~1 day
+- `cacheLife('max')` — long-lived, rely on on-demand revalidation
+- `cacheLife({ revalidate: 900, expire: Infinity })` — custom values (seconds)
+
+Default is 15-minute revalidate, infinite expire.
+
+**You can also cache at the function level** for shared data-fetching:
+
+```tsx
+import 'server-only'
+import { cacheLife } from 'next/cache'
+
+export async function getPosts() {
+  "use cache"
+  cacheLife('hours')
+  const res = await fetch('http://api.cms.com/posts')
+  return res.json()
+}
+
+// Any component can call getPosts() and get the cached result
+export default async function Page() {
+  const posts = await getPosts()
+  return <div>{/* ... */}</div>
+}
+```
+
+**On-demand revalidation** with `cacheTag`:
+
+```tsx
+import { cacheLife, cacheTag } from 'next/cache'
+
+async function PostList() {
+  "use cache"
+  cacheLife('max')
+  cacheTag('posts')  // can be invalidated with revalidateTag('posts')
+  // ...
+}
+```
+
+## Pattern 4: `"use cache"` with runtime data (cookies, headers, params)
+
+**Critical constraint:** `cookies()`, `headers()`, `searchParams` CANNOT be called inside `"use cache"`. The cache is populated at build time — there's no request context available.
+
+**The fix:** Read runtime data outside the cached scope, pass values as arguments. The argument becomes part of the cache key, so different values get separate cache entries.
+
+```tsx
+import { cookies } from 'next/headers'
+import { cacheLife } from 'next/cache'
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ProfileContent />
+    </Suspense>
+  )
+}
+
+// NOT cached — reads runtime data
+async function ProfileContent() {
+  const session = (await cookies()).get('session')?.value
+  // Pass the value (not the promise) to the cached component
+  return <CachedProfile sessionId={session} />
+}
+
+// Cached — sessionId is part of the cache key
+async function CachedProfile({ sessionId }: { sessionId: string }) {
+  "use cache"
+  cacheLife('hours')
+  const data = await fetchUserData(sessionId)
+  return <div>{data.name}</div>
+}
+```
+
+## Pattern 5: Cached parent with dynamic children (interleaving)
+
+A cached component can accept `children` as a pass-through slot. The cached parts prerender into the shell; the dynamic children stream in at request time. You can even cache layouts this way.
+
+```tsx
+// Cached layout — header with latest post date is in the shell
+export default async function Layout({ children }: { children: ReactNode }) {
+  "use cache"
+  cacheLife('hours')
+
+  const res = await fetch('http://api.cms.com/posts')
+  const { posts } = await res.json()
+
+  return (
+    <>
+      <header>
+        <p>Last updated: {posts.at(-1).publishedAt}</p>
+      </header>
+      <Suspense>
+        {children}  {/* Dynamic — renders at request time */}
+      </Suspense>
+    </>
+  )
+}
+```
+
+**Constraint:** Don't read/introspect the `children` inside the `"use cache"` body — just pass them through in the returned JSX.
+
+## Pattern 6: Granular `<Suspense>` fallback (last resort, but high quality)
+
+Only for genuinely uncacheable, user-specific, real-time data. The fallback becomes part of the shell. The dynamic content streams in.
+
+**How to build a high-quality skeleton:**
+
+1. **Mirror the structure** — the skeleton should use the same layout containers, same CSS classes for spacing/sizing, and same overall hierarchy. Replace data-dependent content with animated placeholder elements (e.g., `rounded bg-muted animate-pulse` divs) that match the expected dimensions.
+2. **Match dimensions precisely** — if the real component renders a 3-column grid with specific heights, the skeleton must have the same grid with placeholder cards of the same height.
+3. **Preserve static elements** — if the component has static headings, labels, or structural chrome that don't depend on data, include them as-is in the skeleton (not as placeholders). This reduces perceived loading.
+
+```tsx
+<Suspense fallback={<PriceSkeleton />}>
+  <LivePrice tickerId={id} />
+</Suspense>
+```
+
+## Pattern 7: `connection()` for non-deterministic operations
+
+`Math.random()`, `Date.now()`, `crypto.randomUUID()` during prerender will error. Use `connection()` to explicitly defer to request time:
+
+```tsx
+import { connection } from 'next/server'
+
+async function UniqueContent() {
+  await connection()
+  const random = Math.random()
+  return <div>{random}</div>
+}
+```
+
+Or cache them with `"use cache"` if you want the same value served to all users.
+
+## Key Constraints
+
+- **`React.cache()` vs `"use cache"` — different things.** `React.cache()` deduplicates function calls within a single render pass (same request). `"use cache"` is a directive that caches across requests and includes output in the static shell. They serve different purposes. **`React.cache()` is isolated inside `"use cache"` boundaries** — values stored via `React.cache` outside a `"use cache"` scope are NOT visible inside it. Don't use `React.cache` to pass data into `"use cache"`. Use function arguments instead.
+- **`"use cache"` arguments and return values must be serializable** — no class instances, no functions (except pass-through), no Symbols, no WeakMaps.
+- **Route params with `"use cache"`** — if a page has dynamic route segments (`[slug]`), params aren't known at build time. Must add `generateStaticParams` or the page can't prerender.
+- **Troubleshooting: cached component re-executing every request** — if another part in the SAME Suspense boundary blocks on a long-running promise, the cache entry won't be included in the shell. Fix: wrap the blocking part in its own Suspense boundary.
+- **`"use cache"` always needs `cacheLife()`** — never use the directive without specifying a duration.
+- **Runtime data (`cookies()`, `headers()`, `searchParams`) CANNOT go inside `"use cache"`** — read outside, pass as args.
+
+## Fix Priority
+
+When optimizing a PPR boundary, apply patterns in this order:
+
+1. **Push async I/O down** — move await to leaf components, make parent sync (Pattern 1)
+2. **Extract static content** — move static elements outside `<Suspense>` boundaries (Pattern 2)
+3. **`"use cache"` + `cacheLife()`** — for data that doesn't need to be fresh every request (Pattern 3)
+4. **`"use cache"` with runtime data as args** — for personalized but cacheable data (Pattern 4)
+5. **Cached parent with dynamic children** — for layouts/wrappers with mixed content (Pattern 5)
+6. **Granular `<Suspense>` fallback** — LAST RESORT for genuinely uncacheable real-time data, but must be high-quality when used (Pattern 6)
