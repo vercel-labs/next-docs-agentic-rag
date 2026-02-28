@@ -1,5 +1,5 @@
 ---
-name: learn-next
+name: ask-next
 description: >-
   Look up Next.js documentation for a topic. Use before implementing any
   Next.js feature to get accurate, up-to-date framework knowledge.
