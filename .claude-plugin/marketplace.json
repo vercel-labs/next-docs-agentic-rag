@@ -4,15 +4,15 @@
     "name": "Jude Gao"
   },
   "metadata": {
-    "description": "Next.js documentation RAG plugin for Claude Code"
+    "description": "Next.js documentation RAG skill for Claude Code"
   },
   "plugins": [
     {
       "name": "nextjs-docs-rag",
       "source": "./",
-      "description": "Injects relevant Next.js documentation into every prompt via RAG",
-      "version": "0.1.0",
-      "keywords": ["nextjs", "rag", "docs", "context"]
+      "description": "/learn-next skill — query Next.js docs via RAG before coding",
+      "version": "0.2.0",
+      "keywords": ["nextjs", "rag", "docs", "skill"]
     }
   ]
 }

@@ -59,6 +59,32 @@ export default function Home() {
           </p>
         </header>
 
+        {/* Installation */}
+        <section className="mb-16 space-y-8">
+          <div>
+            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+              Install in Claude Code
+            </h2>
+            <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
+              Add the marketplace, install the plugin, then use the{" "}
+              <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
+                /learn-next
+              </code>{" "}
+              skill to look up Next.js docs before coding.
+            </p>
+            <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-7 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+              {`# 1. Add the marketplace
+/plugin marketplace add vercel-labs/next-docs-agentic-rag
+
+# 2. Install the plugin
+/plugin install nextjs-docs-rag@vercel-labs-next-docs-agentic-rag
+
+# 3. Use it
+/learn-next server actions`}
+            </pre>
+          </div>
+        </section>
+
         {/* API Documentation */}
         <section className="mb-16 space-y-8">
           <div>
