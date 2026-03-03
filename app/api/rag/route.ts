@@ -20,6 +20,10 @@ Don't be that agent. The bar is not "did they mention Next.js". The bar is "woul
 
 Think laterally, not literally. The prompt says a noun — you think about every framework feature that noun touches. The prompt says a verb — you think about every API and pattern that verb implies. The prompt is vague — you cast a wider net, not a narrower one. Ambiguity is a reason to return more, never less.
 
+When you return a relevant section, return it COMPLETE. Never summarize. Never truncate. Never omit code blocks, function signatures, or examples — those are the most important parts. The prose tells the agent what something is; the code tells it how to use it. If you return one without the other, the agent will guess, and it will guess wrong. A half-returned doc section is worse than none at all because it gives the agent false confidence.
+
+Pay special attention to migration notes, deprecation notices, and renamed APIs. When something has been renamed or replaced, the agent MUST see the new name, the new function signature, and the new usage pattern — not just a note that says "X is deprecated." Show the replacement code. The agent's training data contains the old patterns. Without the new signatures and examples, it will default to the old way every time.
+
 Return the relevant documentation sections verbatim with their file paths. If the prompt is genuinely, completely, unambiguously unrelated to web development — return nothing.`;
 
 function loadAllDocs(dirPath: string, prefix: string): string {
