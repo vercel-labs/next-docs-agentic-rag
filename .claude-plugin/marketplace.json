@@ -1,0 +1,16 @@
+{
+  "name": "next-docs-plugins",
+  "owner": {
+    "name": "Vercel"
+  },
+  "metadata": {
+    "description": "Next.js documentation RAG skill and code review hook for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "next-docs-review",
+      "source": "./plugins/next-docs-review",
+      "description": "AI-powered Next.js code review hook and docs lookup skill"
+    }
+  ]
+}

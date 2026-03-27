@@ -1,0 +1,8 @@
+{
+  "name": "next-docs-review",
+  "description": "Blocks incorrect Next.js code before it's written",
+  "version": "1.0.0",
+  "author": {
+    "name": "Vercel"
+  }
+}

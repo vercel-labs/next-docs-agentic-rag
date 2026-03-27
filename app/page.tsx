@@ -111,26 +111,21 @@ export default function Home() {
         </header>
 
         {/* Installation */}
-        <section className="mb-16 space-y-8">
-          <div>
-            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              Install
-            </h2>
-            <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
-              Install the skill, then use{" "}
-              <code className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
-                /ask-next
-              </code>{" "}
-              to look up Next.js docs before coding.
-            </p>
-            <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-7 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-              {`# 1. Install the skill
-npx skills add vercel-labs/next-docs-agentic-rag
+        <section className="mb-16">
+          <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+            Install as a plugin
+          </h2>
+          <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
+            A pre-write hook that blocks incorrect Next.js code before
+            it&apos;s written.
+          </p>
+          <pre className="overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 text-sm leading-7 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+            {`# 1. Add the marketplace
+/plugin marketplace add vercel-labs/next-docs-agentic-rag
 
-# 2. Use it
-/ask-next server actions`}
-            </pre>
-          </div>
+# 2. Install the plugin
+/plugin install next-docs-review@next-docs-plugins`}
+          </pre>
         </section>
 
         {/* Demo */}

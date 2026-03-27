@@ -43,13 +43,8 @@ export async function POST(req: Request) {
   const body = await req.json();
   const { code } = body;
 
-  console.log("[Review] POST /api/review");
-
   if (!code || typeof code !== "string") {
-    return new Response(JSON.stringify({ error: "code is required" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return Response.json({ error: "code is required" }, { status: 400 });
   }
 
   // Step 1: Retrieve relevant docs via RAG
@@ -72,7 +67,7 @@ export async function POST(req: Request) {
     },
   });
 
-  return new Response(JSON.stringify(review), {
-    headers: { "Content-Type": "application/json" },
-  });
+  console.log("[Review] POST /api/review, code:", code, "response:", review);
+
+  return Response.json(review);
 }

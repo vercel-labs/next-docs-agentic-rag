@@ -20,14 +20,16 @@ Two API endpoints:
 | `POST /api/rag`    | Takes a prompt, returns relevant Next.js/React doc sections                                        |
 | `POST /api/review` | Takes code, retrieves relevant docs via RAG, then reviews the code against them using Claude Sonnet |
 
-## Install as a skill
+## Install as a plugin
+
+Includes a pre-write hook that reviews code against the docs before every Write/Edit.
 
 ```sh
-# Install the skill
-npx skills add vercel-labs/next-docs-agentic-rag
+# Add the marketplace
+/plugin marketplace add vercel-labs/next-docs-agentic-rag
 
-# Use it
-/ask-next server actions
+# Install the plugin
+/plugin install next-docs-review@next-docs-plugins
 ```
 
 ## Run locally
