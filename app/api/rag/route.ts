@@ -81,7 +81,7 @@ export async function POST(req: Request) {
   });
 
   const { text } = await generateText({
-    model: gateway("google/gemini-3-flash"),
+    model: gateway("google/gemini-3.1-flash-lite-preview"),
     system: SYSTEM_PROMPT,
     prompt: query,
     providerOptions: {
