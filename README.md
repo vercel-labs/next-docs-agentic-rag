@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Deslop-as-a-Service
 
-## Getting Started
+Stop your AI coding agent from hallucinating outdated Next.js APIs.
 
-First, run the development server:
+This project loads the **entire** Next.js and React documentation into a system prompt, then uses Gemini Flash Lite to retrieve only the sections relevant to a given prompt. The result is grounded, citation-backed context that keeps coding agents honest.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## How it works
+
+```
+User prompt ──> RAG endpoint ──> Gemini Flash Lite (full docs in system prompt)
+                                         │
+                                   Relevant doc sections
+                                   (verbatim, with citations)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Two API endpoints:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Endpoint           | What it does                                                                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| `POST /api/rag`    | Takes a prompt, returns relevant Next.js/React doc sections                                        |
+| `POST /api/review` | Takes code, retrieves relevant docs via RAG, then reviews the code against them using Claude Sonnet |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Install as a skill
 
-## Learn More
+```sh
+# Install the skill
+npx skills add vercel-labs/next-docs-agentic-rag
 
-To learn more about Next.js, take a look at the following resources:
+# Use it
+/ask-next server actions
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Run locally
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```sh
+pnpm install
+pnpm dev
+```
 
-## Deploy on Vercel
+Set `AI_GATEWAY_API_KEY` in your environment.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Open [http://localhost:3000](http://localhost:3000) to try the demo UI — it has a RAG tab for doc retrieval and a Review tab for code review.

@@ -1,4 +1,5 @@
-import { generateText, createGateway } from "ai";
+import { generateObject, createGateway } from "ai";
+import { z } from "zod";
 import { retrieveDocs } from "../rag/route";
 
 const REVIEW_PROMPT = `You are a code reviewer who checks Next.js and React code against official documentation.
@@ -25,6 +26,19 @@ Do NOT flag style preferences, formatting, or things the docs don't cover. Only 
 
 If the code is correct according to the docs, say so briefly.`;
 
+const reviewSchema = z.object({
+  hasIssues: z
+    .boolean()
+    .describe(
+      "true ONLY if concrete issues were found backed by documentation. false if the code is correct, is not Next.js/React code, or has no documentation-backed issues."
+    ),
+  review: z
+    .string()
+    .describe(
+      "The review text. If hasIssues is true, describe each issue. If false, briefly confirm the code is correct."
+    ),
+});
+
 export async function POST(req: Request) {
   const body = await req.json();
   const { code } = body;
@@ -46,10 +60,11 @@ export async function POST(req: Request) {
     apiKey: process.env.AI_GATEWAY_API_KEY ?? "",
   });
 
-  const { text: review } = await generateText({
+  const { object: review } = await generateObject({
     model: gateway("anthropic/claude-sonnet-4-6"),
     system: REVIEW_PROMPT,
     prompt: `## Code to review:\n\`\`\`\n${code}\n\`\`\`\n\n## Relevant documentation:\n${relevantDocs}`,
+    schema: reviewSchema,
     providerOptions: {
       gateway: {
         only: ["anthropic"],
@@ -57,5 +72,7 @@ export async function POST(req: Request) {
     },
   });
 
-  return new Response(review);
+  return new Response(JSON.stringify(review), {
+    headers: { "Content-Type": "application/json" },
+  });
 }
