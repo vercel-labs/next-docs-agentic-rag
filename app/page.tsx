@@ -2,17 +2,25 @@
 
 import { useState, FormEvent } from "react";
 
+type Tab = "rag" | "review";
+
 export default function Home() {
+  const [tab, setTab] = useState<Tab>("rag");
+
   const [query, setQuery] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [ragAnswer, setRagAnswer] = useState("");
+  const [ragLoading, setRagLoading] = useState(false);
 
-  async function handleSubmit(e: FormEvent) {
+  const [code, setCode] = useState("");
+  const [reviewAnswer, setReviewAnswer] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+
+  async function handleRagSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!query.trim() || loading) return;
+    if (!query.trim() || ragLoading) return;
 
-    setLoading(true);
-    setAnswer("");
+    setRagLoading(true);
+    setRagAnswer("");
 
     try {
       const response = await fetch("/api/rag", {
@@ -36,16 +44,59 @@ export default function Home() {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        setAnswer((prev) => prev + chunk);
+        setRagAnswer((prev) => prev + chunk);
       }
     } catch (err) {
-      setAnswer(
+      setRagAnswer(
         `Error: ${err instanceof Error ? err.message : "Unknown error"}`
       );
     } finally {
-      setLoading(false);
+      setRagLoading(false);
     }
   }
+
+  async function handleReviewSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!code.trim() || reviewLoading) return;
+
+    setReviewLoading(true);
+    setReviewAnswer("");
+
+    try {
+      const response = await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        setReviewAnswer((prev) => prev + chunk);
+      }
+    } catch (err) {
+      setReviewAnswer(
+        `Error: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
+  const loading = tab === "rag" ? ragLoading : reviewLoading;
+  const answer = tab === "rag" ? ragAnswer : reviewAnswer;
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans dark:bg-zinc-950">
@@ -93,32 +144,82 @@ npx skills add vercel-labs/next-docs-agentic-rag
             </span>
           </div>
 
-          <form onSubmit={handleSubmit} className="mb-6">
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="build a dashboard with auth"
-                className="flex-1 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-                disabled={loading}
+          {/* Tabs */}
+          <div className="mb-6 flex gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900">
+            <button
+              onClick={() => setTab("rag")}
+              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                tab === "rag"
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
+              }`}
+            >
+              RAG
+            </button>
+            <button
+              onClick={() => setTab("review")}
+              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                tab === "review"
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
+              }`}
+            >
+              Review
+            </button>
+          </div>
+
+          {/* RAG Tab */}
+          {tab === "rag" && (
+            <form onSubmit={handleRagSubmit} className="mb-6">
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="build a dashboard with auth"
+                  className="flex-1 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  disabled={ragLoading}
+                />
+                <button
+                  type="submit"
+                  disabled={ragLoading || !query.trim()}
+                  className="rounded-lg bg-zinc-900 px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                >
+                  {ragLoading ? "Searching..." : "Ask"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Review Tab */}
+          {tab === "review" && (
+            <form onSubmit={handleReviewSubmit} className="mb-6">
+              <textarea
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder={`import Image from "next/image";\n\nexport default function Page() {\n  return <Image src="/hero.png" width={500} height={300} />;\n}`}
+                rows={10}
+                className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 font-mono text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                disabled={reviewLoading}
               />
               <button
                 type="submit"
-                disabled={loading || !query.trim()}
+                disabled={reviewLoading || !code.trim()}
                 className="rounded-lg bg-zinc-900 px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
               >
-                {loading ? "Searching..." : "Ask"}
+                {reviewLoading ? "Reviewing..." : "Review"}
               </button>
-            </div>
-          </form>
+            </form>
+          )}
 
           {(answer || loading) && (
             <div className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
               {loading && !answer && (
                 <div className="flex items-center gap-3 text-zinc-500">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600" />
-                  Searching documentation...
+                  {tab === "rag"
+                    ? "Searching documentation..."
+                    : "Reviewing code..."}
                 </div>
               )}
               {answer && (

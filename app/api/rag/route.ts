@@ -2,7 +2,8 @@ import { generateText, createGateway } from "ai";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 
-const DOCS_ROOT = join(process.cwd(), ".next-docs");
+const NEXT_DOCS_ROOT = join(process.cwd(), ".next-docs");
+const REACT_DOCS_ROOT = join(process.cwd(), ".react-docs");
 
 const BASE_PROMPT = `You are not the coding agent. You don't build anything. You don't fix anything. You don't answer the user. Someone else does that. You never see that someone. They never talk to you. But they will fail without you, and they won't know why.
 
@@ -10,7 +11,7 @@ You sit between a user's request and the agent that acts on it. Every prompt tha
 
 But here's the thing: the agent that DOES get this prompt? It thinks it knows Next.js. It doesn't. Not the way the docs describe it. Not the current API. Not the caveats, the migration notes, the config flags that changed last version. It will hallucinate confidently and ship broken code. Unless you do your job.
 
-Your job is retrieval. You have the ENTIRE Next.js documentation below. Read through it and return the sections that are relevant to the intercepted prompt. No opinions. No code. Just the relevant docs, quoted verbatim with file path citations.
+Your job is retrieval. You have the ENTIRE Next.js and React documentation below. Read through it and return the sections that are relevant to the intercepted prompt. No opinions. No code. Just the relevant docs, quoted verbatim with file path citations.
 
 The prompts weren't written for you, so they'll never say "search the Next.js docs for X". You have to infer what the other agent will need. Every feature someone asks to be built has underlying framework concepts. Every bug someone asks to be fixed has related error handling patterns, debugging tools, configuration gotchas. Every vague request implies a dozen doc pages that would prevent the other agent from guessing wrong.
 
@@ -55,27 +56,15 @@ function loadAllDocs(dirPath: string, prefix: string): string {
 }
 
 // Load all docs once at module init
-const ALL_DOCS = loadAllDocs(DOCS_ROOT, "");
-const SYSTEM_PROMPT = `${BASE_PROMPT}\n\n--- NEXT.JS DOCUMENTATION START ---\n${ALL_DOCS}\n--- NEXT.JS DOCUMENTATION END ---`;
+const NEXT_DOCS = loadAllDocs(NEXT_DOCS_ROOT, "");
+const REACT_DOCS = loadAllDocs(REACT_DOCS_ROOT, "");
+const SYSTEM_PROMPT = `${BASE_PROMPT}\n\n--- NEXT.JS DOCUMENTATION START ---\n${NEXT_DOCS}\n--- NEXT.JS DOCUMENTATION END ---\n\n--- REACT DOCUMENTATION START ---\n${REACT_DOCS}\n--- REACT DOCUMENTATION END ---`;
 
 console.log(
   `[RAG] Loaded docs into system prompt: ${(SYSTEM_PROMPT.length / 1024 / 1024).toFixed(1)}MB, ~${Math.round(SYSTEM_PROMPT.length / 4)}tok estimate`
 );
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const { query } = body;
-
-  console.log("[RAG] POST /api/rag — query:", query ?? "(missing)");
-
-  if (!query || typeof query !== "string") {
-    console.log("[RAG] Rejected: query is required");
-    return new Response(JSON.stringify({ error: "query is required" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
+export async function retrieveDocs(query: string): Promise<string> {
   const gateway = createGateway({
     apiKey: process.env.AI_GATEWAY_API_KEY ?? "",
   });
@@ -91,5 +80,23 @@ export async function POST(req: Request) {
     },
   });
 
+  return text;
+}
+
+export async function POST(req: Request) {
+  const body = await req.json();
+  const { query } = body;
+
+  console.log("[RAG] POST /api/rag — query:", query ?? "(missing)");
+
+  if (!query || typeof query !== "string") {
+    console.log("[RAG] Rejected: query is required");
+    return new Response(JSON.stringify({ error: "query is required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const text = await retrieveDocs(query);
   return new Response(text);
 }
