@@ -54,13 +54,13 @@ export async function POST(req: Request) {
   // Step 1: Retrieve relevant docs via RAG
   const relevantDocs = await retrieveDocs(code);
 
-  // Step 2: Review the code against retrieved docs using Sonnet 4.6
+  // Step 2: Review the code against retrieved docs using Haiku 4.5
   const gateway = createGateway({
     apiKey: process.env.AI_GATEWAY_API_KEY ?? "",
   });
 
   const { object: review } = await generateObject({
-    model: gateway("anthropic/claude-sonnet-4-6"),
+    model: gateway("anthropic/claude-haiku-4-5-20251001"),
     system: REVIEW_PROMPT,
     prompt: `## Code to review:\n\`\`\`\n${code}\n\`\`\`\n\n## Relevant documentation:\n${relevantDocs}`,
     schema: reviewSchema,
