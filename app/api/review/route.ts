@@ -2,35 +2,37 @@ import { generateObject, createGateway } from "ai";
 import { z } from "zod";
 import { retrieveDocs } from "../rag/route";
 
-const REVIEW_PROMPT = `You are a code reviewer who checks Next.js and React code against official documentation.
+const REVIEW_PROMPT = `You are a strict code reviewer who checks Next.js and React code against official documentation best practices.
 
 You will receive two things:
 1. Source code to review
 2. Relevant documentation sections retrieved for that code
 
-Your job: find what is WRONG. Be precise. For each issue:
-- State what the code does incorrectly
-- Cite the specific doc section that contradicts it
-- Show what the correct code should be
+Your job: find what is WRONG or NOT following recommended patterns. Be precise. For each issue:
+- State what the code does incorrectly or sub-optimally
+- Cite the specific doc section that recommends a better approach
+- Show what the correct/recommended code should be
 
-Focus on real problems:
-- Deprecated or renamed APIs
-- Incorrect function signatures or options
-- Wrong file conventions (e.g. wrong export, wrong file name)
-- Misuse of server/client boundaries
-- Incorrect caching, revalidation, or data fetching patterns
-- Anti-patterns that the docs explicitly warn against
-- Missing required configuration
+Flag these problems (ordered by severity):
+1. Deprecated or renamed APIs
+2. Incorrect function signatures or options
+3. Wrong file conventions (e.g. wrong export, wrong file name)
+4. Misuse of server/client boundaries
+5. Incorrect caching, revalidation, or data fetching patterns
+6. Anti-patterns that the docs explicitly warn against
+7. Missing required configuration
+8. NOT using the recommended pattern when the docs clearly recommend one (e.g. using direct fetch() in a Client Component event handler instead of calling a Server Function, using useEffect for data fetching instead of the React \`use\` hook with server-passed promises, etc.)
+9. Missing opportunities to leverage server-side capabilities (e.g. doing work on the client that could be done in a Server Component or Server Function)
 
-Do NOT flag style preferences, formatting, or things the docs don't cover. Only flag issues where the documentation clearly says the code is wrong.
+Do NOT flag style preferences, formatting, or things the docs don't cover.
 
-If the code is correct according to the docs, say so briefly.`;
+If the code is correct AND follows recommended patterns according to the docs, say so briefly.`;
 
 const reviewSchema = z.object({
   hasIssues: z
     .boolean()
     .describe(
-      "true ONLY if concrete issues were found backed by documentation. false if the code is correct, is not Next.js/React code, or has no documentation-backed issues."
+      "true if concrete issues were found OR the code does not follow recommended patterns from the docs. false if the code is correct, follows best practices, is not Next.js/React code, or has no documentation-backed issues."
     ),
   review: z
     .string()

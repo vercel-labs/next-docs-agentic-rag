@@ -1,7 +1,12 @@
 #!/bin/bash
 # Pre-Write/Edit hook: sends code to the review API, blocks if issues found.
+# Uses a tracking file to ensure each file is only reviewed once per write cycle.
+# The PostToolUse hook (review-code-post.sh) resets the flag after each write.
 
 set -euo pipefail
+
+# Stable map file keyed to the project dir so pre and post hooks share it
+REVIEW_MAP="/tmp/claude-review-map-$(echo "$CLAUDE_PROJECT_DIR" | md5sum 2>/dev/null | cut -d' ' -f1 || echo "$CLAUDE_PROJECT_DIR" | md5 2>/dev/null | tr -d ' ')"
 
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name')
@@ -21,6 +26,11 @@ if [ ${#CODE} -lt 50 ]; then
 fi
 
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path')
+
+# Skip if this file has already been reviewed (flag set by a previous PreToolUse)
+if [ -f "$REVIEW_MAP" ] && grep -qFx "$FILE_PATH" "$REVIEW_MAP" 2>/dev/null; then
+  exit 0
+fi
 
 # Skip non-code files (markdown, text, config, shell scripts, etc.)
 case "$FILE_PATH" in
@@ -49,6 +59,9 @@ REVIEW_TEXT=$(echo "$REVIEW" | jq -r '.review' 2>/dev/null) || true
 if [ "$HAS_ISSUES" != "true" ] && [ "$HAS_ISSUES" != "false" ]; then
   exit 0
 fi
+
+# Mark this file as reviewed so subsequent writes skip the review
+echo "$FILE_PATH" >> "$REVIEW_MAP"
 
 if [ "$HAS_ISSUES" = "true" ]; then
   # Issues found — block the write
