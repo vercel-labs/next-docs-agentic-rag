@@ -43,13 +43,18 @@ const reviewSchema = z.object({
     ),
 });
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const { code } = body;
+const reviewRequestSchema = z.object({
+  code: z.string().trim().min(1, "code is required"),
+});
 
-  if (!code || typeof code !== "string") {
+export async function POST(req: Request) {
+  const result = reviewRequestSchema.safeParse(await req.json());
+
+  if (!result.success) {
     return Response.json({ error: "code is required" }, { status: 400 });
   }
+
+  const { code } = result.data;
 
   // Step 1: Retrieve relevant docs via RAG
   const relevantDocs = await retrieveDocs(code);
@@ -71,7 +76,7 @@ export async function POST(req: Request) {
     },
   });
 
-  console.log("[Review] POST /api/review, code:", code, "response:", review);
+  console.log("[Review] POST /api/review", { hasIssues: review.hasIssues });
 
   return Response.json(review);
 }

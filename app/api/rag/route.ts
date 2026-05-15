@@ -1,6 +1,7 @@
 import { generateText, createGateway } from "ai";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
+import { z } from "zod";
 
 const NEXT_DOCS_ROOT = join(process.cwd(), ".next-docs");
 const REACT_DOCS_ROOT = join(process.cwd(), ".react-docs");
@@ -59,6 +60,9 @@ function loadAllDocs(dirPath: string, prefix: string): string {
 const NEXT_DOCS = loadAllDocs(NEXT_DOCS_ROOT, "");
 const REACT_DOCS = loadAllDocs(REACT_DOCS_ROOT, "");
 const SYSTEM_PROMPT = `${BASE_PROMPT}\n\n--- NEXT.JS DOCUMENTATION START ---\n${NEXT_DOCS}\n--- NEXT.JS DOCUMENTATION END ---\n\n--- REACT DOCUMENTATION START ---\n${REACT_DOCS}\n--- REACT DOCUMENTATION END ---`;
+const ragRequestSchema = z.object({
+  query: z.string().trim().min(1, "query is required"),
+});
 
 console.log(
   `[RAG] Loaded docs into system prompt: ${(SYSTEM_PROMPT.length / 1024 / 1024).toFixed(1)}MB, ~${Math.round(SYSTEM_PROMPT.length / 4)}tok estimate`
@@ -84,18 +88,18 @@ export async function retrieveDocs(query: string): Promise<string> {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { query } = body;
+  const result = ragRequestSchema.safeParse(await req.json());
 
-  console.log("[RAG] POST /api/rag — query:", query ?? "(missing)");
-
-  if (!query || typeof query !== "string") {
+  if (!result.success) {
     console.log("[RAG] Rejected: query is required");
     return new Response(JSON.stringify({ error: "query is required" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  const { query } = result.data;
+  console.log("[RAG] POST /api/rag");
 
   const text = await retrieveDocs(query);
   return new Response(text);
